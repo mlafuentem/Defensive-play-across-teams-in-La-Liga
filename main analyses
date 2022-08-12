@@ -6,124 +6,10 @@ library(SBpitch)
 library(forcats)
 library(grid)
 
-Comp <- FreeCompetitions()     
-Matches <- FreeMatches(Comp) 
-StatsBombData <- free_allevents(MatchesDF = Matches, Parallel = T)
-Esp_stats <- StatsBombData %>% filter(team.name== 'Espanyol')
-Esp_stats <- allclean(Esp_stats)
 LaLiga <- FreeCompetitions() %>% filter(competition_id== 11 & season_id== 90)
 Matches_sp <- FreeMatches(LaLiga)
 Events_LL <- free_allevents(MatchesDF = Matches_sp, Parallel = T)
 Events_LL <- allclean(Events_LL)
-
-shots_goals= Esp_stats %>% group_by(player.name) %>% summarise(shots= sum(type.name== 'Shot', na.rm = TRUE)/ n_distinct(match_id), goals= sum(shot.outcome.name== 'Goal', na.rm = TRUE)/ n_distinct(match_id)) %>% arrange(desc(goals)) %>% slice_head(n=9)
-
-shots_goals_long= pivot_longer(shots_goals, cols = c(shots, goals), names_to = 'variable', values_to = 'value')
-shots_goals_long
-
-ggplot(data= shots_goals_long, aes(x= reorder(player.name, value) , y= value, fill= variable))+
-  geom_bar(stat = 'identity', position= 'dodge')+
-  labs(y= 'events per game')+
-  theme(axis.title.y = element_blank())+
-  #scale_y_continuous(expand = c(0,0))+
-  coord_flip()+
-  theme_SB()+
-  scale_fill_manual(values = c('green', 'orange'))
-
-player_shots <- Esp_stats %>% group_by(player.name, player.id) %>% summarise(shots= sum(type.name== 'Shot', na.rm= TRUE))
-
-player_shots
-
-player_minutes <- get.minutesplayed(Esp_stats)
-
-View(player_minutes)
-
-player_minutes <- player_minutes %>% group_by(player.id, player.name) %>% summarise(minutes_game= sum(minutes.played)/n_distinct(match_id))
-
-player_minutes <- player_minutes[-c(1:8),]
-player_minutes
-
-player_shots= left_join(player_minutes, player_shots, by= c("player.name", 'player.id'))
-player_shots <- player_shots %>% select(player.id, player.name, minutes_game, shots)
-
-player_shots <- player_shots %>% mutate(nineties= minutes_game/90)
-
-player_shots <- player_shots %>% mutate(shots_90= shots/nineties)
-
-player_shots <- player_shots %>% arrange(desc(shots_90))
-
-Darder_passes <- Esp_stats %>% filter(player.id== '3236' & type.name== 'Pass' & is.na(pass.outcome.name)) %>% filter(pass.end_location.x>=102 & pass.end_location.y<= 62 & pass.end_location.y>=18)
-
-create_Pitch() +
-  geom_segment(data = Darder_passes, aes(x = location.x, y = location.y, xend = pass.end_location.x, yend = pass.end_location.y), 
-               lineend = "round", size = 0.5, colour = "#000000", arrow = arrow(length = unit(0.07, "inches"), ends = "last", type = "open")) +
-  labs(title = "Sergi Darder, Completed Box Passes", subtitle = "All competitions played until 2021") +
-scale_y_reverse() + 
-coord_fixed(ratio = 105/100)
-
-Melendo_id <- Esp_stats %>% filter(str_detect(player.name, 'Melendo')) %>% select(player.id) %>% slice(n=1) %>% pull()
-
-Melendo_id
-
-Melendo_passes <- Esp_stats %>% filter(player.id== Melendo_id & type.name== 'Pass' & is.na(pass.outcome.name)) %>% filter(pass.end_location.x>=102 & pass.end_location.y<= 62 & pass.end_location.y>=18)
-
-create_Pitch() +
-  geom_segment(data = Melendo_passes, aes(x = location.x, y = location.y, xend = pass.end_location.x, yend = pass.end_location.y), 
-               lineend = "round", size = 0.5, colour = "#000000", arrow = arrow(length = unit(0.07, "inches"), ends = "last", type = "open")) +
-  labs(title = "Óscar Melendo, Completed Box Passes", subtitle = "All competitions played until 2021") +
-  scale_y_reverse() + 
-  coord_fixed(ratio = 105/100)
-
-Passess_all <- Esp_stats %>% group_by(player.id, player.name) %>% summarise(good_p= (sum(is.na(pass.outcome.name))/ (sum(is.na(pass.outcome.name))+ sum(!is.na(pass.outcome.name))))*100) %>% arrange(desc(good_p))
-
-Passess_all_off <- Esp_stats %>% group_by(player.id, player.name) %>% filter(pass.end_location.x>60) %>% summarise(good_p_off= (sum(is.na(pass.outcome.name))/ (sum(is.na(pass.outcome.name))+ sum(!is.na(pass.outcome.name))))*100, n_good_passes=sum(is.na(pass.outcome.name)), n_bad_passes= sum(!is.na(pass.outcome.name)))%>% arrange(desc(good_p_off))
-
-inv_p <- sort(Passess_all_off$good_p_off)
-
-Passess_all_off$rank <- rank(inv_p, ties.method = 'first')
-
-?rank
-?arrange
-
-minutes <- get.minutesplayed(Esp_stats)
-
-minutes_played <- minutes %>% group_by(player.id, player.name) %>% summarise(minutes_total= sum(minutes.played))
-
-minutes_played <- minutes_played[-c(1:7),]
-
-Passess_all_off <- left_join (Passess_all_off, minutes_played, by= c('player.id' , 'player.name'))
-
-
-Passess_all_off <- Passess_all_off %>% mutate(good_p_per_m= n_good_passes/ minutes_total)
-
-Passess_all_off <- Passess_all_off %>% mutate(m_for_good_pass= 1/ good_p_per_m)
-
-names(StatsBombData)
-
-xGA <- Events_LL %>% filter(type.name== 'Shot') %>% select(shot.key_pass_id, xGA= shot.statsbomb_xg)
-
-shot_assists <- left_join(Events_LL, xGA, by= c('id'= 'shot.key_pass_id')) %>% select(team.name, player.name, player.id, type.name, pass.shot_assist, pass.goal_assist, xGA) %>% filter(pass.goal_assist== TRUE | pass.shot_assist== TRUE) %>% arrange(desc(xGA))
-
-player_xGA <- shot_assists %>% group_by(player.name, player.id, team.name) %>% summarise(xGA= sum(xGA, na.rm = TRUE))%>% arrange(desc(xGA))
-
-player_xG <- Events_LL %>% filter(type.name== 'Shot') %>% filter(shot.type.name != 'Penalty' | is.na(shot.type.name)) %>% group_by(player.id, player.name, team.name) %>% summarise(xG= sum(shot.statsbomb_xg)) %>% left_join(player_xGA) %>% mutate(xG_xGA= sum(xG + xGA)) %>% arrange(desc(xG_xGA))
-
-minutes_played_LL <- get.minutesplayed(Events_LL) %>% group_by(player.id, player.name, team.name) %>% summarise(total_minutes= sum(minutes.played))
-
-player_xG <- player_xG %>% left_join(minutes_played_LL) %>% group_by(player.id, player.name, team.name) %>% mutate(nineties= total_minutes/90) %>% mutate(xG_90= xG/nineties, xGA_90= xGA/nineties, xG_xGA_90= xG_xGA/ nineties) %>% arrange(desc(xG_xGA_90))
-
-chart <- player_xG %>% ungroup() %>% filter(total_minutes>=600) %>% slice_max(xG_xGA_90, n= 15) %>% arrange(desc(xG_xGA_90))
-
-chart <- chart %>% select(2, 9:11) %>% pivot_longer(-player.name, names_to = 'variable', values_to = 'value')
-
-chart <- chart %>% mutate(player.name= recode(player.name, 'Francisco António Machado Mota de Castro Trincão'= ' Francisco Trincão', 'Lionel Andrés Messi Cuccittini'= 'Leo Messi', 'Martin Braithwaite Christensen'= 'Martin Braithwaite', 'Philippe Coutinho Correia'= 'Philippe Coutinho', 'Ronald Federico Araújo da Silva'= 'Ronald Araújo', 'Sergio Busquets i Burgos'= 'Sergio Busquets')) %>% arrange(desc(value)) %>% mutate(variable= fct_relevel(variable, 'xG_xGA_90', 'xGA_90', 'xG_90'))
-
-ggplot(data= chart, aes(x= player.name, y= value, fill= variable))+
-  geom_bar(stat='identity')+
-  theme(axis.title.y = element_blank())+
-  labs(title = 'Goal expectation: shot, assistance and combined')+
-  coord_flip()+
-  scale_fill_manual(values = c('gray', 'blue', 'green'), labels= c('combined', 'assistance', 'shot'))
 
 heatmap <- Events_LL %>% mutate(location.x= ifelse(location.x>120, 120, location.x), location.y= ifelse(location.y>80, 80, location.y), location.x= ifelse(location.x<0, 0, location.x), location.y= ifelse(location.y<0, 0, location.y))
 
@@ -165,17 +51,18 @@ theme(rect = element_blank(),
         axis.title.x = element_blank(),
         axis.title.y = element_blank())+
   scale_y_reverse()+
-  scale_fill_gradientn(colours = defensiveactivitycolors, trans = "reverse")#, labels =
+  scale_fill_gradientn(colours = defensiveactivitycolors, trans = "reverse")+#, labels =
    #                      scales::percent_format(accuracy = 1), limits = c(0.03, -0.03))+
   labs(title = "Where Do Teams Defend vs League Average?", subtitle = "La Liga, 2020/21") +
-  coord_fixed(ratio = 95/100)
+  coord_fixed(ratio = 95/100)+
+    annotation_custom(grob = linesGrob(arrow=arrow(type="open", ends="last", length=unit(2.55,"mm")), gp=gpar(col="black", fill=NA, lwd=2.2)), xmin=25, xmax = 95, ymin = -83, ymax = -83)+
+    guides(fill = guide_legend(reverse = TRUE))
   
 return(plot)
 }
 
-teams= unique(heatmap$team.name)
-teams
 
+teams= unique(heatmap$team.name)
 for (team in teams){
 print(toupper(team))
 print(heatmap_DA(team))
